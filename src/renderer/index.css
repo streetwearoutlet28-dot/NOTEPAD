@@ -1,0 +1,135 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Onest:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Default: Dark Theme */
+    --bg-primary: #1E1E1E;
+    --bg-secondary: #2D2D2D;
+    --bg-tertiary: #121212;
+    --text-primary: #E0E0E0;
+    --text-secondary: #A0A0A0;
+    --border-color: #3F3F3F;
+    --accent-color: #3DA3F5;
+    --accent-glow: rgba(14, 165, 233, 0.2);
+    --selection-bg: #264F78;
+  }
+
+  body.theme-light {
+    --bg-primary: #FFFFFF;
+    --bg-secondary: #F3F4F6;
+    --bg-tertiary: #E5E7EB;
+    --text-primary: #1F2937;
+    --text-secondary: #4B5563;
+    --border-color: #D1D5DB;
+    --accent-color: #3DA3F5;
+    --accent-glow: rgba(61, 163, 245, 0.15);
+    --selection-bg: #ADD6FF;
+  }
+
+  body.theme-sepia {
+    --bg-primary: #F4ECD8;
+    --bg-secondary: #EADFCA;
+    --bg-tertiary: #DFD3BA;
+    --text-primary: #5B4636;
+    --text-secondary: #8C7355;
+    --border-color: #DFD3BA;
+    --accent-color: #B25E29;
+    --accent-glow: rgba(178, 94, 41, 0.15);
+    --selection-bg: #E3C19C;
+  }
+
+  body.theme-midnight {
+    --bg-primary: #050811;
+    --bg-secondary: #0A0F1D;
+    --bg-tertiary: #020306;
+    --text-primary: #E2E8F0;
+    --text-secondary: #94A3B8;
+    --border-color: #1E293B;
+    --accent-color: #38BDF8;
+    --accent-glow: rgba(56, 189, 248, 0.25);
+    --selection-bg: #1E3A8A;
+  }
+
+  body {
+    @apply font-sans antialiased overflow-hidden h-screen w-screen;
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+    user-select: none;
+  }
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-700 rounded-full border-2 border-transparent bg-clip-content;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-gray-600;
+}
+
+/* Flipped Flashcards animations */
+.perspective-1000 {
+  perspective: 1000px;
+}
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Smooth Fade In and Layout helper transitions */
+.fade-in {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Search Highlight pulse glow effect */
+@keyframes searchPulseGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(14, 165, 233, 0);
+    background-color: rgba(14, 165, 233, 0);
+  }
+  25% {
+    box-shadow: 0 0 12px 2px rgba(14, 165, 233, 0.45);
+    background-color: rgba(14, 165, 233, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 0 rgba(14, 165, 233, 0);
+    background-color: rgba(14, 165, 233, 0);
+  }
+  75% {
+    box-shadow: 0 0 12px 2px rgba(14, 165, 233, 0.45);
+    background-color: rgba(14, 165, 233, 0.2);
+  }
+  100% {
+    box-shadow: 0 0 6px 1px rgba(14, 165, 233, 0.25);
+    background-color: rgba(14, 165, 233, 0.12);
+  }
+}
+
+.search-highlight-pulse {
+  animation: searchPulseGlow 3s cubic-bezier(0.25, 1, 0.5, 1) 1 forwards;
+}

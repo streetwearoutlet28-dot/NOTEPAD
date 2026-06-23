@@ -1,0 +1,58 @@
+{
+  "name": "notepad-by-flo",
+  "version": "1.0.0",
+  "productName": "Notepad by Flo",
+  "description": "Premium plain text notebook workspace",
+  "main": "dist-main/main/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
+    "dev:main": "tsc -p tsconfig.main.json --watch",
+    "dev:renderer": "vite",
+    "build": "tsc -p tsconfig.main.json && vite build && electron-builder",
+    "build:mac": "tsc -p tsconfig.main.json && vite build && electron-builder --mac",
+    "build:win": "tsc -p tsconfig.main.json && vite build && electron-builder --win",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron-store": "^11.0.2",
+    "firebase": "^11.9.1",
+    "highlight.js": "^11.11.1",
+    "lucide-react": "^0.395.0",
+    "marked": "^18.0.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/marked": "^5.0.2",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.19",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.4.5",
+    "vite": "^8.0.16"
+  },
+  "build": {
+    "appId": "com.flo.notepadbyflo",
+    "productName": "Notepad by Flo",
+    "files": [
+      "dist-main/**/*",
+      "dist/renderer/**/*",
+      "package.json",
+      "notepad.png"
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    }
+  }
+}
