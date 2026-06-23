@@ -9,7 +9,6 @@ import ThemeCapsule from './components/ThemeCapsule';
 import AppIdeasPanel from './components/AppIdeas/AppIdeasPanel';
 import { AppIdea } from './components/AppIdeas/types';
 import {
-  loadAllData,
   savePreferences,
   saveNote,
   deleteNote,
@@ -18,10 +17,6 @@ import {
   saveAppIdea,
   deleteAppIdea,
   subscribeToAll,
-  DBNote,
-  DBProject,
-  DBAppIdea,
-  DBPreferences,
 } from '../lib/db';
 
 interface ProjectStep {
@@ -145,130 +140,101 @@ export default function App() {
   const activeUser = users.find(u => u.id === activeUserId) || users[0] || defaultUsers[0];
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
 
-  // 1. Load settings and documents — Firestore first, electron-store as fallback
+  // 1. Load initial local settings (theme/zoom/etc.) and subscribe to Firestore
   useEffect(() => {
-    const loadSettings = async () => {
+    // Set up Firestore real-time listeners
+    const unsubscribe = subscribeToAll({
+      onNotesChange: (notes) => {
+        setDocuments(notes as any);
+        setLoading(false);
+      },
+      onProjectsChange: (projs) => {
+        setProjects(projs.map(p => ({
+          ...p,
+          steps: Array.isArray(p.steps) ? p.steps : []
+        })) as any);
+      },
+      onAppIdeasChange: (ideas) => {
+        setAppIdeas(ideas as any);
+      },
+      onPreferencesChange: (p) => {
+        if (p.theme) setTheme(p.theme as any);
+        if (p.zoomLevel) setZoomLevel(p.zoomLevel);
+        if (p.language) setLanguage(p.language);
+        if (p.timezone) setTimezone(p.timezone);
+        if (p.timeFormat) setTimeFormat(p.timeFormat as any);
+        if (p.dateFormat) setDateFormat(p.dateFormat);
+        if (p.wordWrap !== undefined) setWordWrap(p.wordWrap);
+        if (p.spellCheck !== undefined) setSpellCheck(p.spellCheck);
+        if (p.users && p.users.length > 0) setUsers(p.users);
+        if (p.activeUserId) setActiveUserId(p.activeUserId);
+        if (p.activeProjectId !== undefined) setActiveProjectId(p.activeProjectId);
+        if (p.activeTabId !== undefined) setActiveTabId(p.activeTabId);
+        if (p.activeAppIdeaId !== undefined) setActiveAppIdeaId(p.activeAppIdeaId);
+
+        if ((p as any).fontSize) setFontSize((p as any).fontSize);
+        if ((p as any).lineHeight) setLineHeight((p as any).lineHeight);
+        if ((p as any).fontFamily) setFontFamily((p as any).fontFamily);
+        if ((p as any).lineNumbersVisible !== undefined) setLineNumbersVisible((p as any).lineNumbersVisible);
+        if ((p as any).focusMode !== undefined) setFocusMode((p as any).focusMode);
+        if ((p as any).customTemplates) setCustomTemplates((p as any).customTemplates);
+        if ((p as any).pinnedDocs) setPinnedDocs((p as any).pinnedDocs);
+        if ((p as any).docsOrder) setDocsOrder((p as any).docsOrder);
+        if ((p as any).projectsOrder) setProjectsOrder((p as any).projectsOrder);
+
+        if (p.tabs && p.tabs.length > 0) {
+          setTabs(p.tabs);
+        }
+      }
+    });
+
+    const loadLocalSettings = async () => {
       try {
-        // Try Firestore first (returns null if not configured or offline)
-        const firestoreData = await loadAllData();
-
-        if (firestoreData) {
-          // ── Firestore loaded successfully ──
-          const { preferences: p, notes, projects: projs, appIdeas: ideas } = firestoreData;
-
-          if (p.theme) setTheme(p.theme as any);
-          if (p.zoomLevel) setZoomLevel(p.zoomLevel);
-          if (p.language) setLanguage(p.language);
-          if (p.timezone) setTimezone(p.timezone);
-          if (p.timeFormat) setTimeFormat(p.timeFormat as any);
-          if (p.dateFormat) setDateFormat(p.dateFormat);
-          if (p.wordWrap !== undefined) setWordWrap(p.wordWrap);
-          if (p.spellCheck !== undefined) setSpellCheck(p.spellCheck);
-          if (p.users && p.users.length > 0) setUsers(p.users);
-          if (p.activeUserId) setActiveUserId(p.activeUserId);
-          if (p.activeProjectId !== undefined) setActiveProjectId(p.activeProjectId);
-
-          // Load new features states
-          if ((p as any).fontSize) setFontSize((p as any).fontSize);
-          if ((p as any).lineHeight) setLineHeight((p as any).lineHeight);
-          if ((p as any).fontFamily) setFontFamily((p as any).fontFamily);
-          if ((p as any).lineNumbersVisible !== undefined) setLineNumbersVisible((p as any).lineNumbersVisible);
-          if ((p as any).focusMode !== undefined) setFocusMode((p as any).focusMode);
-          if ((p as any).customTemplates) setCustomTemplates((p as any).customTemplates);
-          if ((p as any).pinnedDocs) setPinnedDocs((p as any).pinnedDocs);
-          if ((p as any).docsOrder) setDocsOrder((p as any).docsOrder);
-          if ((p as any).projectsOrder) setProjectsOrder((p as any).projectsOrder);
-
-          if (projs.length > 0) {
-            const migrated = projs.map((proj: any) => ({
-              ...proj,
-              steps: Array.isArray(proj.steps) ? proj.steps : [],
-            }));
-            setProjects(migrated);
-          }
-
-          if (notes.length > 0) {
-            setDocuments(notes as any);
-          }
-
-          if (p.tabs && p.tabs.length > 0) {
-            setTabs(p.tabs);
-            if (p.activeTabId && p.tabs.some((t: Tab) => t.id === p.activeTabId)) {
-              setActiveTabId(p.activeTabId);
-            } else {
-              setActiveTabId(p.tabs[0].id);
-            }
-          }
-
-          if (ideas.length > 0) setAppIdeas(ideas as AppIdea[]);
-          if (p.activeAppIdeaId !== undefined) setActiveAppIdeaId(p.activeAppIdeaId);
-
+        let store: any = null;
+        if (window.electron) {
+          store = await window.electron.storeGetStore();
         } else {
-          // ── Firestore unavailable — fall back to electron-store / localStorage ──
-          let store: any = null;
-          if (window.electron) {
-            store = await window.electron.storeGetStore();
-          } else {
-            const localData = localStorage.getItem('notepad_store');
-            if (localData) {
-              try { store = JSON.parse(localData); } catch (e) {}
-            }
-          }
-
-          if (store) {
-            if (store.theme) setTheme(store.theme);
-            if (store.zoomLevel) setZoomLevel(store.zoomLevel);
-            if (store.language) setLanguage(store.language);
-            if (store.timezone) setTimezone(store.timezone);
-            if (store.timeFormat) setTimeFormat(store.timeFormat);
-            if (store.dateFormat) setDateFormat(store.dateFormat);
-            if (store.wordWrap !== undefined) setWordWrap(store.wordWrap);
-            if (store.spellCheck !== undefined) setSpellCheck(store.spellCheck);
-            if (store.users && store.users.length > 0) setUsers(store.users);
-            if (store.activeUserId) setActiveUserId(store.activeUserId);
-
-            // Load new features states
-            if (store.fontSize) setFontSize(store.fontSize);
-            if (store.lineHeight) setLineHeight(store.lineHeight);
-            if (store.fontFamily) setFontFamily(store.fontFamily);
-            if (store.lineNumbersVisible !== undefined) setLineNumbersVisible(store.lineNumbersVisible);
-            if (store.focusMode !== undefined) setFocusMode(store.focusMode);
-            if (store.customTemplates) setCustomTemplates(store.customTemplates);
-            if (store.pinnedDocs) setPinnedDocs(store.pinnedDocs);
-            if (store.docsOrder) setDocsOrder(store.docsOrder);
-            if (store.projectsOrder) setProjectsOrder(store.projectsOrder);
-
-            if (store.projects && store.projects.length > 0) {
-              const migratedProjects = store.projects.map((p: any) => ({
-                ...p,
-                steps: Array.isArray(p.steps) ? p.steps : [],
-              }));
-              setProjects(migratedProjects);
-            }
-            if (store.activeProjectId) setActiveProjectId(store.activeProjectId);
-            if (store.documents && store.documents.length > 0) setDocuments(store.documents);
-            if (store.tabs && store.tabs.length > 0) {
-              setTabs(store.tabs);
-              if (store.activeTabId && store.tabs.some((t: Tab) => t.id === store.activeTabId)) {
-                setActiveTabId(store.activeTabId);
-              } else {
-                setActiveTabId(store.tabs[0].id);
-              }
-            }
-            if (store.appIdeas && store.appIdeas.length > 0) setAppIdeas(store.appIdeas);
-            if (store.activeAppIdeaId) setActiveAppIdeaId(store.activeAppIdeaId);
+          const localData = localStorage.getItem('notepad_store');
+          if (localData) {
+            try { store = JSON.parse(localData); } catch (e) {}
           }
         }
+
+        if (store) {
+          // Load only visual preferences/settings, NOT notes, drafts, or appIdeas
+          if (store.theme) setTheme(store.theme);
+          if (store.zoomLevel) setZoomLevel(store.zoomLevel);
+          if (store.language) setLanguage(store.language);
+          if (store.timezone) setTimezone(store.timezone);
+          if (store.timeFormat) setTimeFormat(store.timeFormat);
+          if (store.dateFormat) setDateFormat(store.dateFormat);
+          if (store.wordWrap !== undefined) setWordWrap(store.wordWrap);
+          if (store.spellCheck !== undefined) setSpellCheck(store.spellCheck);
+          if (store.users && store.users.length > 0) setUsers(store.users);
+          if (store.activeUserId) setActiveUserId(store.activeUserId);
+          if (store.fontSize) setFontSize(store.fontSize);
+          if (store.lineHeight) setLineHeight(store.lineHeight);
+          if (store.fontFamily) setFontFamily(store.fontFamily);
+          if (store.lineNumbersVisible !== undefined) setLineNumbersVisible(store.lineNumbersVisible);
+          if (store.focusMode !== undefined) setFocusMode(store.focusMode);
+          if (store.customTemplates) setCustomTemplates(store.customTemplates);
+          if (store.pinnedDocs) setPinnedDocs(store.pinnedDocs);
+          if (store.docsOrder) setDocsOrder(store.docsOrder);
+          if (store.projectsOrder) setProjectsOrder(store.projectsOrder);
+        }
       } catch (err) {
-        console.error('Error loading settings:', err);
+        console.error('Error loading local settings:', err);
       } finally {
         setLoading(false);
       }
     };
-    loadSettings();
+
+    loadLocalSettings();
+
+    return () => unsubscribe();
   }, []);
 
-  // 2. Debounced save — writes to electron-store (local cache) AND Firestore (sync)
+  // 2. Debounced save — writes settings to electron-store (local cache) and preferences to Firestore (sync)
   useEffect(() => {
     if (loading) return;
     const timeout = setTimeout(() => {
@@ -281,7 +247,7 @@ export default function App() {
         customTemplates, pinnedDocs, docsOrder, projectsOrder,
       };
 
-      // Always write to electron-store as local cache / fallback
+      // Always write UI settings to electron-store as local cache / fallback
       if (window.electron) {
         window.electron.storeSet('theme', theme);
         window.electron.storeSet('zoomLevel', zoomLevel);
@@ -293,13 +259,6 @@ export default function App() {
         window.electron.storeSet('spellCheck', spellCheck);
         window.electron.storeSet('users', users);
         window.electron.storeSet('activeUserId', activeUserId);
-        window.electron.storeSet('projects', projects);
-        window.electron.storeSet('activeProjectId', activeProjectId);
-        window.electron.storeSet('documents', documents);
-        window.electron.storeSet('tabs', tabs);
-        window.electron.storeSet('activeTabId', activeTabId);
-        window.electron.storeSet('appIdeas', appIdeas);
-        window.electron.storeSet('activeAppIdeaId', activeAppIdeaId);
 
         // New features
         window.electron.storeSet('fontSize', fontSize);
@@ -314,67 +273,17 @@ export default function App() {
       } else {
         localStorage.setItem('notepad_store', JSON.stringify({
           theme, zoomLevel, language, timezone, timeFormat, dateFormat,
-          wordWrap, spellCheck, users, activeUserId, projects, activeProjectId,
-          documents, tabs, activeTabId, appIdeas, activeAppIdeaId,
+          wordWrap, spellCheck, users, activeUserId,
           fontSize, lineHeight, fontFamily, lineNumbersVisible, focusMode,
           customTemplates, pinnedDocs, docsOrder, projectsOrder
         }));
       }
 
-      // Also write to Firestore (no-op if not configured)
+      // Also write preferences to Firestore (no-op if not configured)
       savePreferences(prefs);
-      projects.forEach(p => saveProject(p as any));
-      appIdeas.forEach(idea => saveAppIdea(idea as any));
     }, 2000);
     return () => clearTimeout(timeout);
-  }, [theme, zoomLevel, language, timezone, timeFormat, dateFormat, wordWrap, spellCheck, users, activeUserId, projects, activeProjectId, documents, tabs, activeTabId, appIdeas, activeAppIdeaId, fontSize, lineHeight, fontFamily, lineNumbersVisible, focusMode, customTemplates, pinnedDocs, docsOrder, projectsOrder, loading]);
-
-  // 2b. Real-time Firestore listeners — push remote changes to React state
-  useEffect(() => {
-    if (loading) return;
-    const unsubscribe = subscribeToAll({
-      onNotesChange: (notes: DBNote[]) => {
-        setDocuments(prev => {
-          const prevStr = JSON.stringify(prev);
-          const nextStr = JSON.stringify(notes);
-          return prevStr === nextStr ? prev : (notes as any);
-        });
-      },
-      onProjectsChange: (projs: DBProject[]) => {
-        setProjects(prev => {
-          const migrated = projs.map((p: DBProject) => ({
-            ...p,
-            steps: Array.isArray(p.steps) ? p.steps : [],
-          }));
-          const prevStr = JSON.stringify(prev);
-          const nextStr = JSON.stringify(migrated);
-          return prevStr === nextStr ? prev : (migrated as any);
-        });
-      },
-      onAppIdeasChange: (ideas: DBAppIdea[]) => {
-        setAppIdeas(prev => {
-          const prevStr = JSON.stringify(prev);
-          const nextStr = JSON.stringify(ideas);
-          return prevStr === nextStr ? prev : (ideas as AppIdea[]);
-        });
-      },
-      onPreferencesChange: (p: DBPreferences) => {
-        if (p.theme) setTheme(p.theme as any);
-        if (p.zoomLevel) setZoomLevel(p.zoomLevel);
-        if (p.language) setLanguage(p.language);
-        if (p.wordWrap !== undefined) setWordWrap(p.wordWrap);
-        if (p.spellCheck !== undefined) setSpellCheck(p.spellCheck);
-        
-        // Remote sync new preferences
-        if ((p as any).fontSize) setFontSize((p as any).fontSize);
-        if ((p as any).lineHeight) setLineHeight((p as any).lineHeight);
-        if ((p as any).fontFamily) setFontFamily((p as any).fontFamily);
-        if ((p as any).lineNumbersVisible !== undefined) setLineNumbersVisible((p as any).lineNumbersVisible);
-        if ((p as any).focusMode !== undefined) setFocusMode((p as any).focusMode);
-      },
-    });
-    return () => unsubscribe();
-  }, [loading]);
+  }, [theme, zoomLevel, language, timezone, timeFormat, dateFormat, wordWrap, spellCheck, users, activeUserId, activeProjectId, activeTabId, activeAppIdeaId, tabs, fontSize, lineHeight, fontFamily, lineNumbersVisible, focusMode, customTemplates, pinnedDocs, docsOrder, projectsOrder, loading]);
 
   // 2c. Debounced save for documents content changes (500ms)
   useEffect(() => {
@@ -385,6 +294,7 @@ export default function App() {
     if (unsavedDocs.length === 0) return;
     
     const timeout = setTimeout(async () => {
+      setSaveStatus('saving');
       try {
         const promises = unsavedDocs.map(async (doc) => {
           saveNote(doc as any);
@@ -686,6 +596,7 @@ export default function App() {
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newId);
     setCurrentView('workspace');
+    saveNote(newDoc as any);
   };
 
   const handleNewDocInProject = (projectId: string) => {
@@ -715,6 +626,7 @@ export default function App() {
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newId);
     setCurrentView('workspace');
+    saveNote(newDoc as any);
   };
 
   const handleOpenFile = async () => {
@@ -739,6 +651,7 @@ export default function App() {
           filePath
         };
         setDocuments(prev => [...prev, doc as DocumentModel]);
+        saveNote(doc as any);
       }
 
       // Check if already open in tabs
@@ -779,6 +692,11 @@ export default function App() {
       // Update savedContent to mark it as saved
       setTabs(prev => prev.map(t => t.id === activeTab.id ? { ...t, savedContent: t.content } : t));
       setDocuments(prev => prev.map(d => d.id === activeTab.id ? { ...d, content: activeTab.content, savedContent: activeTab.content } : d));
+      
+      const doc = documents.find(d => d.id === activeTab.id);
+      if (doc) {
+        saveNote({ ...doc, content: activeTab.content, savedContent: activeTab.content } as any);
+      }
       return;
     }
     if (activeTab.filePath) {
@@ -786,6 +704,11 @@ export default function App() {
       if (success) {
         setTabs(prev => prev.map(t => t.id === activeTab.id ? { ...t, savedContent: t.content } : t));
         setDocuments(prev => prev.map(d => d.id === activeTab.id ? { ...d, content: activeTab.content, savedContent: activeTab.content } : d));
+        
+        const doc = documents.find(d => d.id === activeTab.id);
+        if (doc) {
+          saveNote({ ...doc, content: activeTab.content, savedContent: activeTab.content } as any);
+        }
       }
     } else {
       await handleSaveAsFile();
@@ -807,6 +730,11 @@ export default function App() {
       // Update savedContent to mark it as saved
       setTabs(prev => prev.map(t => t.id === activeTab.id ? { ...t, savedContent: t.content } : t));
       setDocuments(prev => prev.map(d => d.id === activeTab.id ? { ...d, content: activeTab.content, savedContent: activeTab.content } : d));
+      
+      const doc = documents.find(d => d.id === activeTab.id);
+      if (doc) {
+        saveNote({ ...doc, content: activeTab.content, savedContent: activeTab.content } as any);
+      }
       return;
     }
     const result = await window.electron.fileSaveAs(activeTab.content, activeTab.title);
@@ -816,6 +744,11 @@ export default function App() {
       
       setTabs(prev => prev.map(t => t.id === activeTab.id ? { ...t, title, filePath, savedContent: t.content } : t));
       setDocuments(prev => prev.map(d => d.id === activeTab.id ? { ...d, title, filePath, content: activeTab.content, savedContent: activeTab.content } : d));
+      
+      const doc = documents.find(d => d.id === activeTab.id);
+      if (doc) {
+        saveNote({ ...doc, title, filePath, content: activeTab.content, savedContent: activeTab.content } as any);
+      }
     }
   };
 
@@ -859,6 +792,7 @@ export default function App() {
     if (activeTabId) {
       setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, content: newContent } : t));
       setDocuments(prev => prev.map(d => d.id === activeTabId ? { ...d, content: newContent } : d));
+      setSaveStatus('unsaved');
     }
   };
 
@@ -880,8 +814,12 @@ export default function App() {
   const handleRenameDoc = (id: string, newTitle: string) => {
     const trimmed = newTitle.trim();
     if (!trimmed) return;
-    setDocuments(prev => prev.map(d => d.id === id ? { ...d, title: trimmed } : d));
+    const doc = documents.find(d => d.id === id);
+    if (!doc) return;
+    const updated = { ...doc, title: trimmed };
+    setDocuments(prev => prev.map(d => d.id === id ? updated : d));
     setTabs(prev => prev.map(t => t.id === id ? { ...t, title: trimmed } : t));
+    saveNote(updated as any);
   };
 
   // Feature 6: Toggle Pin Document
@@ -939,6 +877,7 @@ export default function App() {
     setActiveTabId(newId);
     setRenamingDocId(newId);
     setCurrentView('workspace');
+    saveNote(duplicatedDoc as any);
   };
 
   // Feature 8: Create Note from Template
@@ -996,6 +935,7 @@ export default function App() {
     setActiveTabId(newId);
     setRenamingDocId(newId);
     setCurrentView('workspace');
+    saveNote(newDoc as any);
   };
 
   // Save current note as template
@@ -1016,8 +956,12 @@ export default function App() {
 
   // Feature 17: Update Tags
   const handleUpdateTags = (docId: string, tags: string[]) => {
-    setDocuments(prev => prev.map(d => d.id === docId ? { ...d, tags } : d));
+    const doc = documents.find(d => d.id === docId);
+    if (!doc) return;
+    const updated = { ...doc, tags };
+    setDocuments(prev => prev.map(d => d.id === docId ? updated : d));
     setTabs(prev => prev.map(t => t.id === docId ? { ...t, tags } : t));
+    saveNote(updated as any);
   };
 
   // Feature 5: Drag and Drop Reordering
@@ -1038,6 +982,7 @@ export default function App() {
     setProjects(prev => [...prev, newProj]);
     setActiveProjectId(newProj.id);
     setActiveTabId(null); // Switch to the new project's roadmap view
+    saveProject(newProj);
   };
 
   const handleDeleteProject = (projectId: string) => {
@@ -1064,39 +1009,36 @@ export default function App() {
 
   // Project checklist roadmap step handlers
   const handleAddProjectStep = (projId: string, text: string) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id === projId) {
-        return {
-          ...p,
-          steps: [...p.steps, { id: 'step-' + Date.now(), text, isCompleted: false }]
-        };
-      }
-      return p;
-    }));
+    const project = projects.find(p => p.id === projId);
+    if (!project) return;
+    const updated = {
+      ...project,
+      steps: [...project.steps, { id: 'step-' + Date.now(), text, isCompleted: false }]
+    };
+    setProjects(prev => prev.map(p => p.id === projId ? updated : p));
+    saveProject(updated);
   };
 
   const handleToggleProjectStep = (projId: string, stepId: string) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id === projId) {
-        return {
-          ...p,
-          steps: p.steps.map(s => s.id === stepId ? { ...s, isCompleted: !s.isCompleted } : s)
-        };
-      }
-      return p;
-    }));
+    const project = projects.find(p => p.id === projId);
+    if (!project) return;
+    const updated = {
+      ...project,
+      steps: project.steps.map(s => s.id === stepId ? { ...s, isCompleted: !s.isCompleted } : s)
+    };
+    setProjects(prev => prev.map(p => p.id === projId ? updated : p));
+    saveProject(updated);
   };
 
   const handleDeleteProjectStep = (projId: string, stepId: string) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id === projId) {
-        return {
-          ...p,
-          steps: p.steps.filter(s => s.id !== stepId)
-        };
-      }
-      return p;
-    }));
+    const project = projects.find(p => p.id === projId);
+    if (!project) return;
+    const updated = {
+      ...project,
+      steps: project.steps.filter(s => s.id !== stepId)
+    };
+    setProjects(prev => prev.map(p => p.id === projId ? updated : p));
+    saveProject(updated);
   };
 
   // Users CRUD Handlers
@@ -1127,6 +1069,7 @@ export default function App() {
   const handleCreateAppIdea = (idea: AppIdea) => {
     setAppIdeas(prev => [...prev, idea]);
     setActiveAppIdeaId(idea.id);
+    saveAppIdea(idea);
   };
 
   const handleDeleteAppIdea = (id: string) => {
@@ -1139,11 +1082,19 @@ export default function App() {
   };
 
   const handleRenameAppIdea = (id: string, name: string) => {
-    setAppIdeas(prev => prev.map(i => i.id === id ? { ...i, name, updatedAt: Date.now() } : i));
+    const idea = appIdeas.find(i => i.id === id);
+    if (!idea) return;
+    const updated = { ...idea, name, updatedAt: Date.now() };
+    setAppIdeas(prev => prev.map(i => i.id === id ? updated : i));
+    saveAppIdea(updated);
   };
 
   const handleUpdateAppIdea = (id: string, updates: Partial<AppIdea>) => {
-    setAppIdeas(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
+    const idea = appIdeas.find(i => i.id === id);
+    if (!idea) return;
+    const updated = { ...idea, ...updates };
+    setAppIdeas(prev => prev.map(i => i.id === id ? updated : i));
+    saveAppIdea(updated);
   };
 
   useEffect(() => {

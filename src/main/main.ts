@@ -308,9 +308,18 @@ function rebuildMenu() {
   Menu.setApplicationMenu(menu);
 }
 
-function setTheme(theme: 'light' | 'dark' | 'system') {
+function setTheme(theme: string) {
   store.set('theme', theme);
-  nativeTheme.themeSource = theme;
+  
+  // Map custom app themes to a valid native profile ('dark' or 'light')
+  if (theme === 'midnight' || theme === 'dark' || theme === 'sepia') {
+    nativeTheme.themeSource = 'dark';
+  } else if (theme === 'light') {
+    nativeTheme.themeSource = 'light';
+  } else {
+    nativeTheme.themeSource = 'system';
+  }
+
   BrowserWindow.getAllWindows().forEach(w => {
     (w as any).webContents.send('menu-action', `theme-${theme}`);
   });
@@ -318,9 +327,16 @@ function setTheme(theme: 'light' | 'dark' | 'system') {
 }
 
 app.whenReady().then(() => {
-  // Sync electron native theme at startup
-  const initialTheme = store.get('theme') as any;
-  nativeTheme.themeSource = initialTheme;
+  // Sync electron native theme safely at startup
+  const initialTheme = store.get('theme') as string || 'dark';
+  
+  if (initialTheme === 'midnight' || initialTheme === 'dark' || initialTheme === 'sepia') {
+    nativeTheme.themeSource = 'dark';
+  } else if (initialTheme === 'light') {
+    nativeTheme.themeSource = 'light';
+  } else {
+    nativeTheme.themeSource = 'system';
+  }
 
   // Explicitly set the dock icon for macOS if available
   if (process.platform === 'darwin' && app.dock) {
